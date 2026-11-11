@@ -14,8 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.google.gson.JsonParser
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.example.receptenapp.ui.theme.ReceptenappTheme
 import be.ayasrecepten.receptenapp.viewmodel.RecipeViewmodel
 
@@ -37,7 +37,9 @@ class MainActivity : ComponentActivity() {
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, tekst)
                         }
-                        startActivity(Intent.createChooser(intent, "Deel recept"))
+                        startActivity(
+                            Intent.createChooser(intent, "Deel recept")
+                        )
                     }
                 )
             }
@@ -53,10 +55,14 @@ fun ReceptenScherm(
 ) {
     var gekozen by remember { mutableStateOf<JsonObject?>(null) }
     var sorteerLikes by remember { mutableStateOf(false) }
+    var sorteerDatum by remember { mutableStateOf(false) }
+    var toonFormulier by remember { mutableStateOf(false) }
 
-    val recepten = remember(jsonTekst, sorteerLikes) {
+    // Recepten uit de API-response halen
+    val recepten = remember(jsonTekst, sorteerLikes, sorteerDatum) {
         try {
             val root = JsonParser.parseString(jsonTekst)
+
             val lijst = if (root.isJsonArray) {
                 root.asJsonArray
             } else {
@@ -67,42 +73,91 @@ fun ReceptenScherm(
                 if (it.isJsonObject) it.asJsonObject else null
             }
 
-            if (sorteerLikes) {
-                items.sortedByDescending {
-                    it.get("likes")?.asInt ?: 0
+            when {
+                sorteerLikes -> items.sortedByDescending {
+                    it.get("likes")?.asInt
+                        ?: it.get("like")?.asInt
+                        ?: 0
                 }
-            } else {
-                items
+
+                sorteerDatum -> items.sortedByDescending {
+                    it.get("datumAangemaakt")?.asString ?: ""
+                }
+
+                else -> items
             }
         } catch (e: Exception) {
-            emptyList()
+            emptyList<JsonObject>()
         }
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(
+                top = 32.dp,
+                start = 16.dp,
+                end = 16.dp,
+                bottom = 16.dp
+            )
     ) {
-        Text("Mijn recepten", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = "Mijn recepten",
+            style = MaterialTheme.typography.headlineMedium
+        )
 
         Spacer(Modifier.height(12.dp))
 
+        Button(onClick = vernieuw) {
+            Text("Vernieuwen")
+        }
+
         Row {
-            Button(onClick = vernieuw) {
-                Text("Vernieuwen")
+            Button(
+                onClick = {
+                    sorteerLikes = !sorteerLikes
+                    sorteerDatum = false
+                }
+            ) {
+                Text("Likes")
             }
 
             Spacer(Modifier.width(8.dp))
 
-            Button(onClick = { sorteerLikes = !sorteerLikes }) {
-                Text(if (sorteerLikes) "Normale volgorde" else "Sorteer op likes")
+            Button(
+                onClick = {
+                    sorteerDatum = !sorteerDatum
+                    sorteerLikes = false
+                }
+            ) {
+                Text("Datum")
             }
+        }
+
+        Button(
+            onClick = {
+                toonFormulier = !toonFormulier
+                gekozen = null
+            }
+        ) {
+            Text(
+                if (toonFormulier) "Sluiten"
+                else "Nieuw recept"
+            )
         }
 
         Spacer(Modifier.height(12.dp))
 
-        if (gekozen != null) {
+        if (toonFormulier) {
+
+            ReceptToevoegen { titel, ingredienten, stappen, tijd ->
+                // Het formulier werkt lokaal.
+                // Voor opslaan op de server is nog een
+                // POST-aanroep via de repository nodig.
+            }
+
+        } else if (gekozen != null) {
+
             val recept = gekozen!!
 
             Button(onClick = { gekozen = null }) {
@@ -110,45 +165,90 @@ fun ReceptenScherm(
             }
 
             Text(
-                recept.get("titel")?.asString ?: "Recept",
+                text = recept.get("titel")?.asString ?: "Recept",
                 style = MaterialTheme.typography.headlineSmall
             )
-            Text("Ingrediënten: ${recept.get("ingredienten")?.asString ?: ""}")
-            Text("Bereiding: ${recept.get("stappen")?.asString ?: ""}")
-            Text("Tijd: ${recept.get("tijd")?.asString ?: "?"} minuten")
 
-            Button(onClick = {
-                delen(
-                    "${recept.get("titel")?.asString}\n" +
-                            "${recept.get("ingredienten")?.asString}\n" +
-                            "${recept.get("stappen")?.asString}"
-                )
-            }) {
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                "Ingrediënten: " +
+                        (recept.get("ingredienten")?.asString ?: "")
+            )
+
+            Text(
+                "Bereiding: " +
+                        (recept.get("stappen")?.asString ?: "")
+            )
+
+            Text(
+                "Tijd: " +
+                        (recept.get("tijd")?.asString ?: "?") +
+                        " minuten"
+            )
+
+            Text(
+                "❤️ Likes: " +
+                        (recept.get("likes")?.asInt
+                            ?: recept.get("like")?.asInt
+                            ?: 0)
+            )
+
+            Button(
+                onClick = {
+                    delen(
+                        "${recept.get("titel")?.asString ?: "Recept"}\n" +
+                                "${recept.get("ingredienten")?.asString ?: ""}\n" +
+                                "${recept.get("stappen")?.asString ?: ""}"
+                    )
+                }
+            ) {
                 Text("Delen")
             }
+
         } else if (recepten.isEmpty()) {
+
             Text(
-                if (jsonTekst.startsWith("Fout")) jsonTekst
-                else "Geen recepten gevonden of gegevens worden geladen."
+                if (jsonTekst.startsWith("Fout")) {
+                    jsonTekst
+                } else {
+                    "Geen recepten gevonden of gegevens worden geladen."
+                }
             )
+
         } else {
+
             LazyColumn {
                 items(recepten) { recept ->
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { gekozen = recept }
+                            .clickable {
+                                gekozen = recept
+                            }
                             .padding(vertical = 12.dp)
                     ) {
                         Text(
-                            recept.get("titel")?.asString ?: "Onbekend recept",
+                            text = recept.get("titel")?.asString
+                                ?: "Onbekend recept",
                             style = MaterialTheme.typography.titleMedium
                         )
+
                         Text(
-                            "Bereidingstijd: " +
-                                    "${recept.get("tijd")?.asString ?: "?"} minuten"
+                            text = "❤️ Likes: " +
+                                    (recept.get("likes")?.asInt
+                                        ?: recept.get("like")?.asInt
+                                        ?: 0)
+                        )
+
+                        Text(
+                            text = "Bereidingstijd: " +
+                                    (recept.get("tijd")?.asString ?: "?") +
+                                    " minuten"
                         )
                     }
+
                     HorizontalDivider()
                 }
             }
@@ -165,9 +265,11 @@ fun ReceptToevoegen(
     var stappen by remember { mutableStateOf("") }
     var tijd by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.padding(16.dp)) {
+    Column(
+        modifier = Modifier.padding(16.dp)
+    ) {
         Text(
-            "Nieuw recept",
+            text = "Nieuw recept",
             style = MaterialTheme.typography.headlineSmall
         )
 
@@ -195,6 +297,8 @@ fun ReceptToevoegen(
             label = { Text("Tijd in minuten") }
         )
 
+        Spacer(Modifier.height(12.dp))
+
         Button(
             onClick = {
                 val minuten = tijd.toIntOrNull()
@@ -203,9 +307,15 @@ fun ReceptToevoegen(
                     titel.isNotBlank() &&
                     ingredienten.isNotBlank() &&
                     stappen.isNotBlank() &&
-                    minuten != null
+                    minuten != null &&
+                    minuten > 0
                 ) {
-                    opslaan(titel, ingredienten, stappen, minuten)
+                    opslaan(
+                        titel,
+                        ingredienten,
+                        stappen,
+                        minuten
+                    )
                 }
             }
         ) {
@@ -213,4 +323,3 @@ fun ReceptToevoegen(
         }
     }
 }
-
