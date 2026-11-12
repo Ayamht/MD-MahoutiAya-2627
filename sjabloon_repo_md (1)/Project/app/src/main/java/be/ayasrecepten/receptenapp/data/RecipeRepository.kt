@@ -7,7 +7,7 @@ class RecipeRepository {
 
     suspend fun getRecipes(): JsonElement {
         return RetrofitInstance.api.getRecipes(
-            "Bearer key"
+            "Bearer  qzpapnvmyro49p6qom72dj21q1laeye"
         )
     }
 }
